@@ -6,38 +6,52 @@ NTFY = os.environ["NTFY_URL"]
 SHOP = "https://shop.museum-ludwig.de/webshop/webticket/timeslot"
 ZIELMONAT = "Juli"   # spaeter ggf. "August" usw.
 
+def finde_kalender_frame(page):
+    # den Frame finden, der den Kalender tatsaechlich enthaelt
+    for fr in page.frames:
+        try:
+            if fr.locator(".timeslot-calendar").count() > 0:
+                return fr
+        except Exception:
+            pass
+    return None
+
 def ziel_verfuegbar():
     with sync_playwright() as p:
         b = p.chromium.launch()
         page = b.new_page()
         page.goto(SHOP, wait_until="networkidle", timeout=60000)
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(4000)  # AJAX/Frame laden lassen
 
-        # "+" per JavaScript ausloesen (umgeht aria-hidden / nicht-klickbar)
-        page.evaluate("""() => {
+        fr = finde_kalender_frame(page)
+        if fr is None:
+            print("DIAGNOSE: Kalender-Frame nicht gefunden.")
+            print("  Anzahl Frames:", len(page.frames))
+            for i, f in enumerate(page.frames):
+                print(f"  Frame {i}: {f.url}")
+            b.close()
+            return False
+
+        # "+" im richtigen Frame ausloesen, damit der Kalender aktiv wird
+        fr.evaluate("""() => {
             const plus = document.querySelector('a.btn-plus');
             if (plus) plus.click();
         }""")
         page.wait_for_timeout(3000)
 
-        # auf Kacheln warten; wenn sie ausbleiben -> Diagnose ausgeben
         try:
-            page.wait_for_selector(".timeslot-calendar__day", state="attached", timeout=30000)
+            fr.wait_for_selector(".timeslot-calendar__day", state="attached", timeout=30000)
         except Exception:
-            print("DIAGNOSE: keine Kacheln gefunden.")
-            print("  Plus-Button im HTML:", page.locator("a.btn-plus").count())
-            print("  Kalender-Container:", page.locator(".timeslot-calendar").count())
-            html = page.content()
-            print("  'Kusama' im HTML:", "Kusama" in html)
-            print("  'timeslot-calendar' im HTML:", "timeslot-calendar" in html)
+            print("DIAGNOSE: Frame da, aber keine Kacheln.")
+            print("  Plus im Frame:", fr.locator("a.btn-plus").count())
             b.close()
             return False
 
         for _ in range(3):
-            header = page.locator(".timeslot-calendar__header h3").inner_text()
+            header = fr.locator(".timeslot-calendar__header h3").inner_text()
             if ZIELMONAT in header:
                 break
-            clicked = page.evaluate("""() => {
+            clicked = fr.evaluate("""() => {
                 const el = document.querySelector('a.timeslot-calendar__month--next');
                 if (!el || el.hasAttribute('disabled')) return false;
                 el.click();
@@ -47,8 +61,8 @@ def ziel_verfuegbar():
                 break
             page.wait_for_timeout(2000)
 
-        header = page.locator(".timeslot-calendar__header h3").inner_text()
-        frei = page.locator(
+        header = fr.locator(".timeslot-calendar__header h3").inner_text()
+        frei = fr.locator(
             ".timeslot-calendar__content .timeslot-calendar__day"
             ":not(.timeslot-calendar__day--disabled)"
         ).count()
