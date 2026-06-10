@@ -6,33 +6,43 @@ NTFY = os.environ["NTFY_URL"]
 SHOP = "https://shop.museum-ludwig.de/webshop/webticket/timeslot"
 ZIELMONAT = "Juli"   # spaeter ggf. "August" usw.
 
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36")
+
 def ziel_verfuegbar():
     with sync_playwright() as p:
-        b = p.chromium.launch()
-        page = b.new_page()
+        b = p.chromium.launch(args=["--disable-blink-features=AutomationControlled"])
+        ctx = b.new_context(
+            user_agent=UA,
+            locale="de-DE",
+            viewport={"width": 1280, "height": 900},
+        )
+        # webdriver-Flag verstecken
+        ctx.add_init_script("Object.defineProperty(navigator,'webdriver',{get:()=>undefined});")
+        page = ctx.new_page()
         page.goto(SHOP, wait_until="networkidle", timeout=60000)
         page.wait_for_timeout(2000)
 
-        # Cookie-Banner bestaetigen ("Verstanden") -> erst dann erscheint der Kalender
-        try:
-            page.get_by_role("button", name="Verstanden").click(timeout=8000)
-        except Exception:
+        # Cookie-Banner bestaetigen, falls da
+        for sel in ['button:has-text("Verstanden")', 'text=Verstanden']:
             try:
-                page.get_by_text("Verstanden", exact=True).click(timeout=8000)
+                page.click(sel, timeout=5000)
+                break
             except Exception:
-                print("DIAGNOSE: 'Verstanden' nicht gefunden/klickbar")
-        page.wait_for_timeout(3000)
+                pass
+        page.wait_for_timeout(2000)
 
-        # jetzt sollte der Kalender da sein
-        try:
-            page.wait_for_selector(".timeslot-calendar__day", state="attached", timeout=30000)
-        except Exception:
-            print("DIAGNOSE: nach Cookie-Klick immer noch keine Kacheln.")
-            print("  calendar:", page.locator(".timeslot-calendar").count())
-            print("  btn-plus:", page.locator("a.btn-plus").count())
+        # Diagnose: kam die echte Seite an?
+        cal = page.locator(".timeslot-calendar").count()
+        if cal == 0:
+            print("DIAGNOSE: Seite weiterhin ohne Kalender.")
+            print("  TITEL:", page.title())
             print("  h1/h2:", page.locator("h1, h2").all_inner_texts())
+            print("  body-Anfang:", page.locator("body").inner_text()[:300])
             b.close()
             return False
+
+        page.wait_for_selector(".timeslot-calendar__day", state="attached", timeout=20000)
 
         for _ in range(3):
             header = page.locator(".timeslot-calendar__header h3").inner_text()
