@@ -11,7 +11,11 @@ def ziel_verfuegbar():
         b = p.chromium.launch()
         page = b.new_page()
         page.goto(SHOP, wait_until="networkidle", timeout=60000)
-        page.wait_for_selector(".timeslot-calendar__content", timeout=30000)
+        # Kartenauswahl aktivieren, damit der Kalender ueberhaupt erscheint
+        page.locator("a.btn-plus").first.click()
+        page.wait_for_timeout(2000)
+        # auf einen tatsaechlichen Tag warten
+        page.wait_for_selector(".timeslot-calendar__day", timeout=30000)
         # bis zu 3x auf "naechster Monat" klicken, bis Zielmonat im Header steht
         for _ in range(3):
             header = page.locator(".timeslot-calendar__header h3").inner_text()
