@@ -11,10 +11,28 @@ def ziel_verfuegbar():
         b = p.chromium.launch()
         page = b.new_page()
         page.goto(SHOP, wait_until="networkidle", timeout=60000)
-        # Kacheln sind im HTML vorhanden, aber unsichtbar -> auf "attached" warten
-        page.wait_for_selector(".timeslot-calendar__day", state="attached", timeout=30000)
+        page.wait_for_timeout(2000)
 
-        # bis zu 3x den ">"-Pfeil per JS klicken (umgeht aria-hidden / unsichtbar)
+        # "+" per JavaScript ausloesen (umgeht aria-hidden / nicht-klickbar)
+        page.evaluate("""() => {
+            const plus = document.querySelector('a.btn-plus');
+            if (plus) plus.click();
+        }""")
+        page.wait_for_timeout(3000)
+
+        # auf Kacheln warten; wenn sie ausbleiben -> Diagnose ausgeben
+        try:
+            page.wait_for_selector(".timeslot-calendar__day", state="attached", timeout=30000)
+        except Exception:
+            print("DIAGNOSE: keine Kacheln gefunden.")
+            print("  Plus-Button im HTML:", page.locator("a.btn-plus").count())
+            print("  Kalender-Container:", page.locator(".timeslot-calendar").count())
+            html = page.content()
+            print("  'Kusama' im HTML:", "Kusama" in html)
+            print("  'timeslot-calendar' im HTML:", "timeslot-calendar" in html)
+            b.close()
+            return False
+
         for _ in range(3):
             header = page.locator(".timeslot-calendar__header h3").inner_text()
             if ZIELMONAT in header:
@@ -34,6 +52,7 @@ def ziel_verfuegbar():
             ".timeslot-calendar__content .timeslot-calendar__day"
             ":not(.timeslot-calendar__day--disabled)"
         ).count()
+        print(f"DIAGNOSE: Monat='{header}', freie Tage={frei}")
         b.close()
         return (ZIELMONAT in header) and (frei > 0)
 
