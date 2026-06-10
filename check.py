@@ -11,10 +11,10 @@ def ziel_verfuegbar():
         b = p.chromium.launch()
         page = b.new_page()
         page.goto(SHOP, wait_until="networkidle", timeout=60000)
-        # Kalender ist auch ohne Klick im HTML vorhanden -> direkt darauf warten
-        page.wait_for_selector(".timeslot-calendar__day", timeout=30000)
+        # Kacheln sind im HTML vorhanden, aber unsichtbar -> auf "attached" warten
+        page.wait_for_selector(".timeslot-calendar__day", state="attached", timeout=30000)
 
-        # bis zu 3x den ">"-Pfeil per JS klicken (umgeht aria-hidden)
+        # bis zu 3x den ">"-Pfeil per JS klicken (umgeht aria-hidden / unsichtbar)
         for _ in range(3):
             header = page.locator(".timeslot-calendar__header h3").inner_text()
             if ZIELMONAT in header:
