@@ -4,40 +4,59 @@ import requests
 
 NTFY = os.environ["NTFY_URL"]
 SHOP = "https://shop.museum-ludwig.de/webshop/webticket/timeslot"
+START = "https://shop.museum-ludwig.de/webshop/webticket/shop"
 ZIELMONAT = "Juli"   # spaeter ggf. "August" usw.
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36")
 
+def click_if_present(page, selectors, timeout=4000):
+    for sel in selectors:
+        try:
+            page.click(sel, timeout=timeout)
+            return True
+        except Exception:
+            pass
+    return False
+
 def ziel_verfuegbar():
     with sync_playwright() as p:
         b = p.chromium.launch(args=["--disable-blink-features=AutomationControlled"])
-        ctx = b.new_context(
-            user_agent=UA,
-            locale="de-DE",
-            viewport={"width": 1280, "height": 900},
-        )
-        # webdriver-Flag verstecken
+        ctx = b.new_context(user_agent=UA, locale="de-DE",
+                            viewport={"width": 1280, "height": 900})
         ctx.add_init_script("Object.defineProperty(navigator,'webdriver',{get:()=>undefined});")
         page = ctx.new_page()
+
+        # 1. ueber die Startseite gehen, um eine Session zu bekommen
+        page.goto(START, wait_until="networkidle", timeout=60000)
+        page.wait_for_timeout(1500)
+        click_if_present(page, ['button:has-text("Verstanden")', 'text=Verstanden'])
+        page.wait_for_timeout(1000)
+
+        # 2. dann zur Timeslot-Seite
         page.goto(SHOP, wait_until="networkidle", timeout=60000)
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(1500)
+        click_if_present(page, ['button:has-text("Verstanden")', 'text=Verstanden'])
+        page.wait_for_timeout(1000)
 
-        # Cookie-Banner bestaetigen, falls da
-        for sel in ['button:has-text("Verstanden")', 'text=Verstanden']:
-            try:
-                page.click(sel, timeout=5000)
+        # 3. falls "Sitzung beendet / Weiter / Neue Sitzung starten" erscheint -> klicken
+        for _ in range(2):
+            body = page.locator("body").inner_text()
+            if "Sitzung" in body and ("Weiter" in body or "Neue Sitzung" in body):
+                click_if_present(page, [
+                    'a:has-text("Neue Sitzung starten")',
+                    'button:has-text("Weiter")',
+                    'a:has-text("Weiter")',
+                    'text=Weiter',
+                ])
+                page.wait_for_timeout(2500)
+            else:
                 break
-            except Exception:
-                pass
-        page.wait_for_timeout(2000)
 
-        # Diagnose: kam die echte Seite an?
         cal = page.locator(".timeslot-calendar").count()
         if cal == 0:
-            print("DIAGNOSE: Seite weiterhin ohne Kalender.")
-            print("  TITEL:", page.title())
-            print("  h1/h2:", page.locator("h1, h2").all_inner_texts())
+            print("DIAGNOSE: weiterhin kein Kalender.")
+            print("  TITEL:", page.title(), "| URL:", page.url)
             print("  body-Anfang:", page.locator("body").inner_text()[:300])
             b.close()
             return False
