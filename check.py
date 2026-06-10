@@ -11,12 +11,25 @@ def ziel_verfuegbar():
         b = p.chromium.launch()
         page = b.new_page()
         page.goto(SHOP, wait_until="networkidle", timeout=60000)
-        # Kartenauswahl aktivieren, damit der Kalender ueberhaupt erscheint
-        page.locator("a.btn-plus").first.click()
+
+        # Cookie-Banner wegklicken, falls vorhanden (stoert sonst den Klick)
+        for label in ["Verstanden", "Alle auswählen", "Alle ablehnen"]:
+            btn = page.get_by_role("button", name=label)
+            if btn.count() > 0:
+                try:
+                    btn.first.click(timeout=3000)
+                except Exception:
+                    pass
+                break
+
+        # Kartenauswahl aktivieren ("+"), Klick erzwingen
+        page.locator("a.btn-plus").first.click(force=True)
         page.wait_for_timeout(2000)
+
         # auf einen tatsaechlichen Tag warten
         page.wait_for_selector(".timeslot-calendar__day", timeout=30000)
-        # bis zu 3x auf "naechster Monat" klicken, bis Zielmonat im Header steht
+
+        # bis zu 3x auf "naechster Monat" klicken
         for _ in range(3):
             header = page.locator(".timeslot-calendar__header h3").inner_text()
             if ZIELMONAT in header:
@@ -24,10 +37,10 @@ def ziel_verfuegbar():
             nxt = page.locator("a.timeslot-calendar__month--next")
             if nxt.get_attribute("disabled") is not None:
                 break
-            nxt.click()
+            nxt.click(force=True)
             page.wait_for_timeout(1500)
+
         header = page.locator(".timeslot-calendar__header h3").inner_text()
-        # buchbare Tage = Kacheln OHNE die Klasse --disabled
         frei = page.locator(
             ".timeslot-calendar__content .timeslot-calendar__day"
             ":not(.timeslot-calendar__day--disabled)"
