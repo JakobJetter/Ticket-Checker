@@ -87,7 +87,7 @@ def ziel_verfuegbar():
         return (ZIELMONAT in header) and (frei > 0)
 
 try:
-    if True():
+    if True:
         requests.post(
             NTFY,
             data=f"Kusama {ZIELMONAT}-Tickets verfuegbar! {SHOP}".encode("utf-8"),
